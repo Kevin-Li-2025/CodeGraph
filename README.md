@@ -8,19 +8,29 @@ Unlike traditional RAG which treats code as plain text, CodeGraph performs **det
 
 ---
 
-## 🔬 "GPT Describes, CodeGraph Proves"
+## 🔬 Benchmark: CodeGraph vs. LLM + RAG (Flask)
 
-We ran a fair head-to-head comparison on the **Flask** codebase (680+ nodes, 880+ edges). 
-Even providing GPT-4o with **6,000 characters of relevant code chunks** (Fair RAG Baseline), the difference in reasoning depth is significant:
+We ran a fair head-to-head comparison on the **Flask** codebase (680+ nodes, 880+ edges).  
+GPT-4o was provided with **6,000 characters of relevant code chunks** (Fair RAG Baseline).
 
-| Metric | GPT-4o (Fair RAG) | CodeGraph | Improvement |
-|--------|-------------------|-----------|-------------|
-| **Relationships Traced** | ~2-3 (Hedged) | **42+ (Provable)** | **~14x Deepest** |
-| **Logic Source** | Semantic Inference | **Deterministic AST** | **Proof-based** |
-| **Indexing Latency** | Minutes (LLM calls) | **<1s (Local Parser)** | **600x faster** |
-| **Accuracy** | Hedged ("might", "likely") | **Exact (file:line)** | **Binary Precision** |
+| Metric | GPT-4o (Fair RAG) | CodeGraph |
+|--------|-------------------|-----------|
+| **Relationships Traced** | ~2-3 (Hedged) | **42+ (Provable)** |
+| **Logic Source** | Semantic Inference | **Deterministic AST** |
+| **Indexing Latency** | Minutes (LLM calls) | **<1s (Local Parser)** |
+| **Accuracy** | Hedged ("might", "likely") | **Exact (file:line)** |
 
-> **Case Study**: When asked *"What exact code path leads to session cookie creation?"*, GPT-4o described the general mechanism. CodeGraph traced a **42-hop internal dependency tree** from `Flask.__call__` to `SecureCookieSessionInterface.save_session`, citing exact file and line numbers.
+## 🔬 Benchmark: PyCG Micro-Benchmark Suite (ICSE 2021)
+
+We evaluated CodeGraph against the [PyCG benchmark](https://github.com/vitsalis/PyCG) — the most cited Python call graph benchmark in the static analysis community (119 micro-benchmarks).
+
+| Metric | CodeGraph | PyCG (Baseline) |
+|--------|-----------|-----------------|
+| **Precision** | **75.0%** | 99.2% |
+| **Recall** | **2.27%** | 69.9% |
+| **Crashed** | 0/119 | — |
+
+**Why recall is low**: PyCG tests module-scope calls (e.g., `func()` at the top level of a file). CodeGraph tracks function-to-function calls only, by design — it's an **architectural reasoning engine**, not a general-purpose call graph tool. See [BENCHMARK_RESULTS.md](BENCHMARK_RESULTS.md) for full analysis.
 
 ---
 
@@ -31,6 +41,14 @@ Even providing GPT-4o with **6,000 characters of relevant code chunks** (Fair RA
 - **Deep Impact Analysis**: Predict the exact blast radius of a change with categorized direct and transitive dependencies.
 - **Static Execution Tracing**: Follow `CALLS` edges to see the actual execution flow of a function (static approximation).
 - **Zero-Cost Indexing**: No LLM calls required to build the core graph structure.
+
+## ⚠️ Limitations
+
+See [LIMITATIONS.md](LIMITATIONS.md) for a frank assessment of what CodeGraph **cannot** do:
+- Dynamic dispatch (`getattr`, dict-based dispatch): ~5-10% of Python calls
+- Module-scope call tracking: not implemented (architectural tradeoff)
+- External library resolution: ~8% unresolved edges
+- Metaclass method injection: invisible to static analysis
 
 ## Quick Start
 
@@ -46,6 +64,9 @@ codegraph query "How does the session cookie creation flow work?"
 
 # Analyze the blast radius of a refactor
 codegraph impact "SecureCookieSessionInterface.save_session"
+
+# Compare against LLM+RAG baseline
+OPENROUTER_API_KEY=xxx codegraph compare "How does Flask handle sessions?"
 ```
 
 ## Architecture
