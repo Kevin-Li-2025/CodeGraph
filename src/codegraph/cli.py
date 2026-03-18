@@ -5,6 +5,7 @@ Commands:
     codegraph index <path>       — Parse + build graph + detect communities.
     codegraph query "<text>"     — Ask a question (with graph reasoning).
     codegraph impact <name>      — Deep blast radius analysis.
+    codegraph compare "<text>"   — Compare CodeGraph vs LLM+RAG side-by-side.
     codegraph stats              — Print graph statistics.
 """
 
@@ -157,6 +158,49 @@ def impact(entity_name: str, depth: int) -> None:
                 console.print(f"  Chain {i + 1}: {chain_str}")
 
         console.print("")
+
+
+@main.command()
+@click.argument("question")
+@click.option("--api-key", envvar="OPENROUTER_API_KEY", help="OpenRouter API key.")
+@click.option("--model", default="openai/gpt-4o", help="LLM model to compare against.")
+def compare(question: str, api_key: str, model: str) -> None:
+    """Compare CodeGraph vs LLM+RAG — FAIR side-by-side comparison."""
+    if not api_key:
+        console.print("[red]✗[/red] Set OPENROUTER_API_KEY or pass --api-key.")
+        return
+
+    graph = _load_graph()
+    engine = QueryEngine(graph)
+
+    console.print(f"\n[bold]Question:[/bold] {question}\n")
+
+    with console.status("[bold green]Running CodeGraph graph reasoning..."):
+        cg_answer = engine.query(question)
+
+    with console.status(f"[bold blue]Querying {model} with RAG context (code chunks)..."):
+        from codegraph.comparison import run_comparison
+        result = run_comparison(question, cg_answer, api_key, graph, model)
+
+    # Display side-by-side.
+    console.print(Panel(
+        result.codegraph_answer,
+        title="🧠 CodeGraph (Graph Traversal)",
+        border_style="green",
+    ))
+
+    console.print(Panel(
+        f"[dim]Context given: {result.context_given_to_llm}[/dim]\n\n"
+        + result.llm_answer,
+        title=f"🤖 {result.llm_model} (LLM + RAG chunks)",
+        border_style="blue",
+    ))
+
+    console.print(Panel(
+        result.analysis.to_text(),
+        title="⚖️ Structured Analysis",
+        border_style="yellow",
+    ))
 
 
 @main.command()
