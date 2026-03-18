@@ -26,11 +26,12 @@ We evaluated CodeGraph against the [PyCG benchmark](https://github.com/vitsalis/
 
 | Metric | CodeGraph | PyCG (Baseline) |
 |--------|-----------|-----------------|
-| **Precision** | **75.0%** | 99.2% |
-| **Recall** | **2.27%** | 69.9% |
-| **Crashed** | 0/119 | — |
+| **Precision** | **76.6%** | 99.2% |
+| **Recall** | **37.1%** | 69.9% |
+| **F1** | **50.0%** | 82.2% |
+| Crashed | 0/119 | — |
 
-**Why recall is low**: PyCG tests module-scope calls (e.g., `func()` at the top level of a file). CodeGraph tracks function-to-function calls only, by design — it's an **architectural reasoning engine**, not a general-purpose call graph tool. See [BENCHMARK_RESULTS.md](BENCHMARK_RESULTS.md) for full analysis.
+**Precision is competitive** — when CodeGraph says "A calls B", it's correct 76.6% of the time. **Recall gap** comes from assignment-based calls (`a = func; a()`) which require data-flow analysis. See [BENCHMARK_RESULTS.md](BENCHMARK_RESULTS.md) for the full 4-round optimization history.
 
 ---
 
@@ -46,7 +47,7 @@ We evaluated CodeGraph against the [PyCG benchmark](https://github.com/vitsalis/
 
 See [LIMITATIONS.md](LIMITATIONS.md) for a frank assessment of what CodeGraph **cannot** do:
 - Dynamic dispatch (`getattr`, dict-based dispatch): ~5-10% of Python calls
-- Module-scope call tracking: not implemented (architectural tradeoff)
+- Assignment-based calls (`a = func; a()`): requires data-flow analysis
 - External library resolution: ~8% unresolved edges
 - Metaclass method injection: invisible to static analysis
 

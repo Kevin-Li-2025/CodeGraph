@@ -100,6 +100,13 @@ class GraphBuilder:
 
                 if source_id and graph.has_node(source_id):
                     if target_id and graph.has_node(target_id):
+                        # For CALLS edges, redirect class references to __init__.
+                        # When code says Cls(), the actual call is Cls.__init__().
+                        if rel.kind == RelationshipKind.CALLS:
+                            init_id = self._resolve_class_to_init(target_id, graph, name_index)
+                            if init_id:
+                                target_id = init_id
+
                         graph.add_edge(
                             source_id, target_id,
                             kind=rel.kind,
@@ -211,4 +218,49 @@ class GraphBuilder:
         if candidates:
             return candidates[0]
 
+        # Try matching the last component of dotted names.
+        # e.g., "os.path.join" → look for "join"
+        if "." in clean:
+            short = clean.rsplit(".", 1)[-1]
+            candidates = name_index.get(short, [])
+            if len(candidates) == 1:
+                return candidates[0]
+
         return None
+
+    def _resolve_class_to_init(
+        self,
+        target_id: str,
+        graph: nx.DiGraph,
+        name_index: dict[str, list[str]],
+    ) -> str | None:
+        """
+        If a CALLS edge points to a CLASS entity, redirect it to __init__.
+
+        When Python code says `obj = MyClass()`, the actual call goes to
+        `MyClass.__init__`. This method checks if the resolved target is
+        a class and, if so, looks for its __init__ method.
+        """
+        if not graph.has_node(target_id):
+            return None
+
+        data = graph.nodes[target_id]
+        entity = data.get("entity")
+        if not entity or entity.kind != EntityKind.CLASS:
+            return None
+
+        # Look for ClassName.__init__
+        init_name = f"{entity.qualified_name}.__init__"
+        candidates = name_index.get(init_name, [])
+        if candidates:
+            return candidates[0]
+
+        # Also try just the __init__ name within this class's children
+        for successor in graph.successors(target_id):
+            succ_data = graph.nodes.get(successor, {})
+            succ_entity = succ_data.get("entity")
+            if succ_entity and succ_entity.name == "__init__":
+                return successor
+
+        return None
+

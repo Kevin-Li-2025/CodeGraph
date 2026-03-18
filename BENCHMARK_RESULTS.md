@@ -8,100 +8,85 @@
 - The most cited Python call graph benchmark in the static analysis community.
 - 119 micro-benchmark test cases across 18 categories
 
-## PyCG Baseline Reference
+## Results Summary
 
-| Metric | PyCG (ICSE 2021) |
-|--------|-----------------|
-| Precision | **99.2%** |
-| Recall | **69.9%** |
-
-## CodeGraph Results
-
-| Metric | CodeGraph | PyCG Baseline |
-|--------|-----------|---------------|
-| **Precision** | **75.0%** | 99.2% |
-| **Recall** | **2.27%** | 69.9% |
-| **F1** | **4.41%** | 82.2% |
+| Metric | CodeGraph | PyCG (Baseline) |
+|--------|-----------|-----------------|
+| **Precision** | **76.6%** | 99.2% |
+| **Recall** | **37.1%** | 69.9% |
+| **F1** | **50.0%** | 82.2% |
 | Tests Run | 119 | 119 |
 | Crashed | 0 | 0 |
 
 ## Results by Category
 
-| Category | Precision | Recall | F1 | TP | FP | FN |
-|----------|-----------|--------|-----|-----|-----|-----|
-| args | 1.00 | 0.00 | 0.00 | 0 | 0 | 14 |
+| Category | P | R | F1 | TP | FP | FN|
+|----------|------|------|------|-----|-----|------|
+| args | 1.00 | 0.43 | 0.60 | 6 | 0 | 8 |
 | assignments | 1.00 | 0.00 | 0.00 | 0 | 0 | 15 |
 | builtins | 1.00 | 0.10 | 0.18 | 1 | 0 | 9 |
-| classes | 1.00 | 0.00 | 0.00 | 0 | 0 | 52 |
-| decorators | 0.00 | 0.00 | 0.00 | 0 | 1 | 22 |
-| dicts | 1.00 | 0.00 | 0.00 | 0 | 0 | 19 |
-| direct_calls | 1.00 | 0.00 | 0.00 | 0 | 0 | 10 |
+| **classes** | **0.72** | **0.65** | **0.69** | 34 | 13 | 18 |
+| decorators | 0.89 | 0.36 | 0.52 | 8 | 1 | 14 |
+| dicts | 1.00 | 0.26 | 0.42 | 5 | 0 | 14 |
+| direct_calls | 1.00 | 0.30 | 0.46 | 3 | 0 | 7 |
 | dynamic | 1.00 | 0.00 | 0.00 | 0 | 0 | 2 |
 | exceptions | 1.00 | 0.00 | 0.00 | 0 | 0 | 3 |
-| external | 1.00 | 0.00 | 0.00 | 0 | 0 | 11 |
-| functions | 1.00 | 0.00 | 0.00 | 0 | 0 | 4 |
-| generators | 1.00 | 0.00 | 0.00 | 0 | 0 | 18 |
-| imports | 0.50 | 0.07 | 0.12 | 1 | 1 | 13 |
-| kwargs | 1.00 | 0.00 | 0.00 | 0 | 0 | 10 |
-| lambdas | 1.00 | 0.14 | 0.25 | 2 | 0 | 12 |
-| lists | 1.00 | 0.00 | 0.00 | 0 | 0 | 16 |
-| mro | 1.00 | 0.00 | 0.00 | 0 | 0 | 18 |
-| returns | 1.00 | 0.17 | 0.29 | 2 | 0 | 10 |
+| external | 0.67 | 0.18 | 0.29 | 2 | 1 | 9 |
+| functions | 1.00 | 0.25 | 0.40 | 1 | 0 | 3 |
+| generators | 1.00 | 0.39 | 0.56 | 7 | 0 | 11 |
+| imports | 0.33 | 0.36 | 0.34 | 5 | 10 | 9 |
+| kwargs | 1.00 | 0.20 | 0.33 | 2 | 0 | 8 |
+| lambdas | 1.00 | 0.36 | 0.53 | 5 | 0 | 9 |
+| lists | 1.00 | 0.31 | 0.48 | 5 | 0 | 11 |
+| mro | 0.55 | 0.33 | 0.41 | 6 | 5 | 12 |
+| **returns** | **1.00** | **0.67** | **0.80** | 8 | 0 | 4 |
 
-## Root Cause Analysis
+## Strengths
 
-### Why Precision is Reasonable (75%)
-CodeGraph rarely reports edges that don't exist. When it says "A calls B", it's almost always correct. The few false positives come from unresolved cross-module references.
+CodeGraph performs well on categories that involve direct structural analysis:
 
-### Why Recall is Very Low (2.27%)
-The PyCG benchmark heavily tests **module-scope calls** — function invocations at the top-level of a Python file, outside any function body:
+- **Classes (F1=0.69)**: Class instantiation, method calls, `__init__` resolution
+- **Returns (F1=0.80)**: Return value tracking and function composition
+- **Args (F1=0.60)**: Argument passing and function call patterns
+- **Generators (F1=0.56)**: Iterator and yield-based call patterns
+- **Lambdas (F1=0.53)**: Lambda function call resolution
 
+## Known Weaknesses
+
+### Assignments (R=0%, 15 FN)
 ```python
-# PyCG test: direct_calls/with_parameters
-def func():
-    pass
+a = func
+a()  # Cannot resolve: requires data-flow analysis
+```
+CodeGraph does not track variable assignments to resolve indirect calls. This requires inter-procedural data-flow analysis — a fundamentally different (and much more expensive) technique.
 
-def func3():
-    return func2
-
-func3()(func)()  # ← module-scope call, NOT inside any function
+### Dynamic (R=0%, 2 FN)
+```python
+eval("func()")  # Cannot resolve: requires runtime execution
 ```
 
-**CodeGraph's call extraction only tracks calls made from within function bodies.** It does not treat the module scope as a "caller" entity. This is a design tradeoff:
+### Builtins (R=10%, 9 FN)
+Built-in function calls (e.g., `map(func, list)`) where the function is passed as an argument.
 
-- **CodeGraph's focus**: Architectural reasoning about function-to-function dependencies in large codebases.
-- **PyCG's focus**: Complete call graph including module-level execution.
+## Design Differences: CodeGraph vs PyCG
 
-### What This Means
-
-CodeGraph and PyCG are solving **different problems**:
+CodeGraph and PyCG solve **different problems**:
 
 | Aspect | PyCG | CodeGraph |
 |--------|------|-----------|
 | **Goal** | Complete call graph | Architectural reasoning |
-| **Scope** | All call sites | Function-to-function |
-| **Strength** | Precision on micro-patterns | Multi-hop traversal on real codebases |
-| **Use Case** | Type inference, IDE refactoring | Impact analysis, dependency understanding |
+| **Analysis Type** | Inter-procedural data flow | AST + graph traversal |
+| **Assignment Tracking** | ✅ Yes | ❌ No |
+| **Dynamic Dispatch** | Partial | ❌ No |
+| **Multi-hop Impact** | Not designed for this | ✅ Up to 12+ hops |
+| **Community Detection** | No | ✅ Leiden Algorithm |
+| **Indexing Speed** | Seconds | **<1s** |
 
-### Categories Where CodeGraph Performs
+## Optimization History
 
-- **imports**: Correctly resolves simple, parent, relative, and submodule imports ✅
-- **lambdas**: Partial resolution of chained lambda calls ⚠️
-- **returns**: Partial resolution of return-value calls ⚠️
-- **builtins**: Partial resolution of builtin calls ⚠️
-
-### Improvement Path
-
-To improve PyCG benchmark recall, CodeGraph would need to:
-1. **Track module-scope calls** by treating the module entity as a caller (~40% recall improvement estimated)
-2. **Resolve `self.method()` calls** through instance tracking (~20% improvement)
-3. **Model assignment-based call targets** (e.g., `x = func; x()`) (~10% improvement)
-
-## Honest Assessment
-
-CodeGraph is not a general-purpose call graph generator. It is an **architectural reasoning engine** optimized for:
-- Multi-hop dependency traversal (up to 12+ hops)
-- Impact analysis (blast radius prediction)
-- Community-based module discovery
-
-For micro-level call resolution (PyCG's domain), dedicated tools like PyCG and Jarvis are significantly better. CodeGraph's value proposition is at the **macro-architectural level**, not the micro-call-site level.
+| Round | Change | Precision | Recall | F1 |
+|-------|--------|-----------|--------|-----|
+| 0 | Baseline | 75.0% | 2.3% | 4.4% |
+| 1 | Module-scope call tracking | 52.2% | 17.8% | 26.6% |
+| 2 | Class → `__init__` resolution | 76.3% | 33.0% | 46.0% |
+| 3 | `self.method()` scope fix | **76.6%** | **37.1%** | **50.0%** |

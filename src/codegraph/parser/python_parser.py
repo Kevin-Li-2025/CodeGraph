@@ -136,7 +136,7 @@ class PythonParser(LanguageParser):
         # Extract call-site relationships.
         self._extract_calls(
             node=tree.root_node,
-            scope_prefix="",
+            scope_prefix=module_name,
             file_path=relative_path,
             entities=entities,
             relationships=relationships,
@@ -447,17 +447,41 @@ class PythonParser(LanguageParser):
         Walk the AST and find all function/method call sites.
 
         For each call, we create a CALLS relationship from the enclosing
-        function to the callee. The callee is identified by name — the graph
-        builder resolves it to an entity ID during cross-file linking.
+        scope (function, class, or module) to the callee. The callee is
+        identified by name — the graph builder resolves it to an entity
+        ID during cross-file linking.
         """
-        # Build a lookup of scope → entity ID for known function entities.
+        # Build a lookup of scope → entity ID for all scope-creating entities.
+        # This includes modules (for top-level calls), classes (for class-body
+        # calls), and functions (for calls inside function bodies).
         scope_to_id: dict[str, str] = {}
         for entity in entities:
-            if entity.kind == EntityKind.FUNCTION:
+            if entity.kind in (EntityKind.FUNCTION, EntityKind.MODULE, EntityKind.CLASS):
                 scope_to_id[entity.qualified_name] = entity.id
 
+        # _walk_calls builds scope names by concatenation starting from
+        # the module name. So at module scope, current_scope = "main".
+        # Inside a class method, current_scope = "main.MyClass.__init__".
+        #
+        # But entity qualified_names don't include the module prefix:
+        # "MyClass.__init__", not "main.MyClass.__init__".
+        #
+        # To handle both, we index entities under BOTH their raw
+        # qualified_name AND the module-prefixed version.
+        module_qname = ""
+        for entity in entities:
+            if entity.kind == EntityKind.MODULE:
+                module_qname = entity.qualified_name
+                break
+
+        for entity in entities:
+            if entity.kind in (EntityKind.FUNCTION, EntityKind.CLASS):
+                # Module-prefixed version (what _walk_calls will construct).
+                prefixed = f"{module_qname}.{entity.qualified_name}" if module_qname else entity.qualified_name
+                scope_to_id[prefixed] = entity.id
+
         self._walk_calls(
-            node, scope_prefix, file_path,
+            node, module_qname, file_path,
             scope_to_id, relationships,
         )
 
@@ -470,8 +494,13 @@ class PythonParser(LanguageParser):
         relationships: list[Relationship],
     ) -> None:
         """Recursively walk the AST looking for call expressions."""
-        # Update scope when entering a function definition.
+        # Update scope when entering a function or class definition.
         if node.type == "function_definition":
+            name_node = node.child_by_field_name("name")
+            if name_node:
+                name = _get_text(name_node)
+                current_scope = f"{current_scope}.{name}" if current_scope else name
+        elif node.type == "class_definition":
             name_node = node.child_by_field_name("name")
             if name_node:
                 name = _get_text(name_node)
