@@ -2,6 +2,18 @@
 
 **Code-aware GraphRAG for complex codebases.**
 
+## Positioning
+
+CodeGraph is the code-structure retrieval prototype in this portfolio. Its job
+is to index source code as AST, call, import, and dependency graphs so codebase
+questions can be answered with file/line-level structural evidence.
+
+It is intentionally narrower than
+[SignalRAG](https://github.com/Kevin-Li-2025/signal-rag): general web search,
+browser integration, citation checking, and provider orchestration belong in
+SignalRAG. CodeGraph should stay focused on deterministic code graph
+experiments and codebase-specific GraphRAG.
+
 CodeGraph builds a structural knowledge graph from source code using AST parsing (tree-sitter), then combines graph-theory algorithms with semantic vector search to answer architectural questions about any codebase.
 
 Unlike traditional RAG which treats code as plain text, CodeGraph performs **deterministic structural analysis**. It doesn't just "guess" based on context chunks; it **navigates the actual dependency graph**.
